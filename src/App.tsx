@@ -14,10 +14,11 @@ import {
   Users,
   Check,
   ChevronDown,
-  ExternalLink,
   Server,
   Monitor,
-  Coins
+  Coins,
+  Globe,
+  Layers
 } from 'lucide-react';
 
 interface WalletAccount {
@@ -786,15 +787,6 @@ function App() {
                   </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
-}
-
-// ... rest of file (remove separate tab handlers)
             </div>
           )}
         </div>
