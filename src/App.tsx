@@ -93,19 +93,29 @@ function App() {
   };
 
   const updateNetwork = (hexId: string) => {
-    const id = parseInt(hexId, 16);
-    setChainId(id);
-    const networks: Record<number, string> = {
-      11155111: 'Sepolia',
-      84532: 'Base Sepolia',
-      421614: 'Arbitrum Sepolia',
-      1: 'Ethereum Mainnet',
-      137: 'Polygon',
-      42161: 'Arbitrum One',
-      10: 'Optimism',
-      8453: 'Base'
-    };
-    setNetwork(networks[id] || `Chain ID: ${id}`);
+    if (!hexId) return;
+    try {
+      const id = typeof hexId === 'string' && hexId.startsWith('0x') 
+        ? parseInt(hexId, 16) 
+        : parseInt(hexId);
+      
+      if (isNaN(id)) return;
+      
+      setChainId(id);
+      const networks: Record<number, string> = {
+        11155111: 'Sepolia',
+        84532: 'Base Sepolia',
+        421614: 'Arbitrum Sepolia',
+        1: 'Ethereum Mainnet',
+        137: 'Polygon',
+        42161: 'Arbitrum One',
+        10: 'Optimism',
+        8453: 'Base'
+      };
+      setNetwork(networks[id] || `Chain ID: ${id}`);
+    } catch (e) {
+      console.error('Failed to update network:', e);
+    }
   };
 
   // Fetch all wallet data
@@ -116,24 +126,39 @@ function App() {
     try {
       // Get accounts
       const accs = await provider.request({ method: 'eth_accounts' });
-      if (accs.length > 0) {
+      if (accs && Array.isArray(accs) && accs.length > 0) {
         setAddress(accs[0]);
+        setIsConnected(true);
         
         // Get balance
-        const bal = await provider.request({ 
-          method: 'eth_getBalance', 
-          params: [accs[0], 'latest'] 
-        });
-        setBalance((parseInt(bal, 16) / 1e18).toFixed(4));
+        try {
+          const bal = await provider.request({ 
+            method: 'eth_getBalance', 
+            params: [accs[0], 'latest'] 
+          });
+          
+          if (typeof bal === 'string') {
+            const b = bal.startsWith('0x') ? BigInt(bal) : BigInt(bal);
+            setBalance((Number(b) / 1e18).toFixed(4));
+          } else {
+            setBalance("0.0000");
+          }
+        } catch (e) {
+          console.error('Balance fetch failed:', e);
+        }
         
         // Get chain
-        const chain = await provider.request({ method: 'eth_chainId' });
-        updateNetwork(chain);
+        try {
+          const chain = await provider.request({ method: 'eth_chainId' });
+          updateNetwork(chain);
+        } catch (e) {
+          console.error('Chain fetch failed:', e);
+        }
         
         // Get account name
         try {
           const name = await provider.request({ method: 'eth_activeAccountName' });
-          setAccountName(name);
+          if (name) setAccountName(name);
         } catch {
           setAccountName('Vibe Account');
         }
@@ -147,9 +172,12 @@ function App() {
               address: a.address,
               isActive: a.isActive
             })));
+            
+            // If we have accounts, update the active one's name
+            const active = accountsList.find(a => a.isActive || a.address.toLowerCase() === accs[0].toLowerCase());
+            if (active) setAccountName(active.name);
           }
         } catch {
-          // Fallback - just use current account
           setAccounts([{ name: accountName, address: accs[0], isActive: true }]);
         }
 
@@ -171,6 +199,24 @@ function App() {
           }
         } catch {
           // No sites
+        }
+
+        // Try to get transaction history
+        try {
+          const history = await provider.request({ method: 'wallet_getTransactionHistory' });
+          if (Array.isArray(history)) {
+            setTransactions(history.map(tx => ({
+              hash: tx.hash,
+              from: tx.from,
+              to: tx.params?.to || 'Contract',
+              value: tx.params?.value ? (BigInt(tx.params.value).toString()) : '0',
+              timestamp: tx.timestamp,
+              status: 'success',
+              type: tx.type === 'deploy' ? 'send' : tx.type
+            })));
+          }
+        } catch (e) {
+          console.error('History fetch failed:', e);
         }
         
         setLastUpdate(new Date());
@@ -245,11 +291,23 @@ function App() {
       });
 
       // Auto-connect if already authorized
-      provider.request({ method: 'eth_accounts' }).then((accounts: string[]) => {
+      provider.request({ method: 'eth_accounts' }).then(async (accounts: string[]) => {
         if (accounts.length > 0) {
           setAddress(accounts[0]);
           setIsConnected(true);
-          connectWallet();
+          await refreshData();
+        } else {
+          // Eagerly try to connect if it's our dashboard
+          try {
+            const accs = await provider.request({ method: 'eth_requestAccounts' });
+            if (accs.length > 0) {
+              setAddress(accs[0]);
+              setIsConnected(true);
+              await refreshData();
+            }
+          } catch (e) {
+            console.log('Eager connection declined');
+          }
         }
       });
     } else if ((window as any).ethereum) {
@@ -318,36 +376,6 @@ function App() {
             onClick={() => setActiveTab('dashboard')} 
           />
           <NavItem 
-            icon={<Users size={20} />} 
-            label="Accounts" 
-            active={activeTab === 'accounts'} 
-            onClick={() => setActiveTab('accounts')} 
-          />
-          <NavItem 
-            icon={<Coins size={20} />} 
-            label="Tokens" 
-            active={activeTab === 'tokens'} 
-            onClick={() => setActiveTab('tokens')} 
-          />
-          <NavItem 
-            icon={<Activity size={20} />} 
-            label="Transactions" 
-            active={activeTab === 'transactions'} 
-            onClick={() => setActiveTab('transactions')} 
-          />
-          <NavItem 
-            icon={<Plug size={20} />} 
-            label="Connections" 
-            active={activeTab === 'connections'} 
-            onClick={() => setActiveTab('connections')} 
-          />
-          <NavItem 
-            icon={<Server size={20} />} 
-            label="MCP Status" 
-            active={activeTab === 'mcp'} 
-            onClick={() => setActiveTab('mcp')} 
-          />
-          <NavItem 
             icon={<Settings size={20} />} 
             label="Settings" 
             active={activeTab === 'settings'} 
@@ -405,40 +433,48 @@ function App() {
             <div className="relative">
               <button 
                 onClick={() => setShowAccountSelector(!showAccountSelector)}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-white/5 transition-colors"
+                className="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-white/5 transition-all group"
               >
                 <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{accountName}</span>
-                  <span className="text-sm font-mono text-zinc-300">{address.slice(0, 6)}...{address.slice(-4)}</span>
+                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] group-hover:text-primary transition-colors italic">{accountName}</span>
+                  <span className="text-xs font-mono text-zinc-300 font-bold group-hover:text-white transition-colors">{address.slice(0, 6)}...{address.slice(-4)}</span>
                 </div>
-                <ChevronDown size={16} className={`text-zinc-500 transition-transform ${showAccountSelector ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-300 ${showAccountSelector ? 'rotate-180 text-primary' : ''}`} />
               </button>
               
               {showAccountSelector && accounts.length > 0 && (
-                <div className="absolute right-0 top-full mt-2 w-64 bg-zinc-900 border border-white/10 rounded-2xl shadow-2xl p-2 z-50">
-                  {accounts.map((acc, i) => (
-                    <button
-                      key={i}
-                      onClick={() => switchAccount(acc.name)}
-                      className={`w-full flex items-center justify-between p-3 rounded-xl transition-colors ${
-                        acc.isActive ? 'bg-primary/10 text-primary' : 'hover:bg-white/5 text-zinc-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                          acc.isActive ? 'bg-primary text-white' : 'bg-zinc-800 text-zinc-400'
-                        }`}>
-                          {acc.name[0]}
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setShowAccountSelector(false)} />
+                  <div className="absolute right-0 top-full mt-3 w-64 bg-[#0A0A0A] border border-white/10 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-50 animate-fade-in ring-1 ring-white/5 overflow-hidden">
+                    <div className="p-3 border-b border-white/5 mb-1 bg-white/[0.02]">
+                      <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500">Switch Account</span>
+                    </div>
+                    {accounts.map((acc, i) => (
+                      <button
+                        key={i}
+                        onClick={() => switchAccount(acc.name)}
+                        className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all duration-300 mb-1 ${
+                          acc.isActive 
+                            ? 'bg-primary/10 border border-primary/20 text-primary' 
+                            : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
+                            acc.isActive ? 'bg-primary text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]' : 'bg-zinc-800 text-zinc-500'
+                          }`}>
+                            {acc.name[0]}
+                          </div>
+                          <div className="text-left">
+                            <p className={`text-xs font-black uppercase italic tracking-tighter ${acc.isActive ? 'text-primary' : ''}`}>{acc.name}</p>
+                            <p className="text-[10px] font-mono opacity-50 tracking-tighter">{acc.address.slice(0, 10)}...{acc.address.slice(-8)}</p>
+                          </div>
                         </div>
-                        <div className="text-left">
-                          <p className="text-sm font-semibold">{acc.name}</p>
-                          <p className="text-[10px] font-mono text-zinc-500">{acc.address.slice(0, 6)}...{acc.address.slice(-4)}</p>
-                        </div>
-                      </div>
-                      {acc.isActive && <Check size={14} />}
-                    </button>
-                  ))}
-                </div>
+                        {acc.isActive && <Check size={14} className="animate-in zoom-in duration-300" />}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
             <div className={`w-10 h-10 rounded-2xl p-[1px] ${isConnected ? 'bg-gradient-to-br from-primary to-secondary' : 'bg-white/10'}`}>
@@ -528,283 +564,237 @@ function App() {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Accounts Section */}
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                          <Users size={20} className="text-primary" /> Accounts
+                        </h3>
+                      </div>
+                      <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        {accounts.map((acc, i) => (
+                          <div 
+                            key={i}
+                            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                              acc.isActive 
+                                ? 'bg-primary/5 border-primary/30' 
+                                : 'bg-zinc-900/40 border-white/5 hover:border-white/10'
+                            }`}
+                            onClick={() => switchAccount(acc.name)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black ${
+                                  acc.isActive ? 'bg-primary text-white' : 'bg-zinc-800 text-zinc-400'
+                                }`}>
+                                  {acc.name[0]}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-sm">{acc.name}</p>
+                                  <p className="text-[10px] font-mono text-zinc-500">{acc.address.slice(0, 10)}...{acc.address.slice(-8)}</p>
+                                </div>
+                              </div>
+                              {acc.isActive && <Check size={14} className="text-primary" />}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Tokens Section */}
+                    <div className="space-y-6">
+                      <h3 className="text-xl font-bold flex items-center gap-2">
+                        <Coins size={20} className="text-primary" /> Tokens
+                      </h3>
+                      <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center text-black font-bold">Ξ</div>
+                            <div>
+                              <p className="font-bold text-sm">ETH</p>
+                              <p className="text-[10px] text-zinc-500">{network}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-bold text-sm">{balance} ETH</p>
+                            <p className="text-[10px] text-zinc-500">${(parseFloat(balance) * 2500).toFixed(2)}</p>
+                          </div>
+                        </div>
+                        {tokens.map((token, i) => (
+                          <div key={i} className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-sm font-bold">{token.symbol[0]}</div>
+                              <div>
+                                <p className="font-bold text-sm">{token.symbol}</p>
+                                <p className="text-[10px] text-zinc-500 font-mono">{token.address.slice(0, 10)}...</p>
+                              </div>
+                            </div>
+                            <div className="text-right font-bold text-sm">{token.balance} {token.symbol}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Transactions Section */}
                   <div>
                     <div className="flex items-center justify-between mb-6">
-                      <h3 className="text-xl font-bold">Recent Activity</h3>
-                      <button 
-                        onClick={() => setActiveTab('transactions')}
-                        className="text-xs text-primary hover:text-primary/80 font-bold flex items-center gap-1"
-                      >
-                        View All <ExternalLink size={12} />
-                      </button>
+                      <h3 className="text-xl font-bold flex items-center gap-2">
+                        <Activity size={20} className="text-primary" /> Recent Activity
+                      </h3>
                     </div>
                     {transactions.length > 0 ? (
                       <div className="space-y-3">
-                        {transactions.slice(0, 5).map((tx, i) => (
+                        {transactions.slice(0, 10).map((tx, i) => (
                           <TransactionRow key={i} tx={tx} />
                         ))}
                       </div>
                     ) : (
                       <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                         <Activity size={40} className="mb-4 opacity-20" />
-                         <p className="text-sm">No recent transactions found on {network}.</p>
+                        <Activity size={40} className="mb-4 opacity-20" />
+                        <p className="text-sm">No recent transactions found on {network}.</p>
                       </div>
                     )}
                   </div>
+
                 </>
               )}
 
-              {activeTab === 'accounts' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-xl font-bold">Wallet Accounts</h3>
-                      <p className="text-sm text-zinc-500 mt-1">Manage your wallet accounts across all connected instances</p>
-                    </div>
-                  </div>
-                  
-                  {accounts.length > 0 ? (
-                    <div className="grid gap-4">
-                      {accounts.map((acc, i) => (
-                        <div 
-                          key={i}
-                          className={`p-6 rounded-2xl border transition-all cursor-pointer ${
-                            acc.isActive 
-                              ? 'bg-primary/5 border-primary/30' 
-                              : 'bg-zinc-900/40 border-white/5 hover:border-white/10'
-                          }`}
-                          onClick={() => switchAccount(acc.name)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black ${
-                                acc.isActive ? 'bg-primary text-white' : 'bg-zinc-800 text-zinc-400'
-                              }`}>
-                                {acc.name[0]}
-                              </div>
-                              <div>
-                                <p className="font-bold text-lg">{acc.name}</p>
-                                <p className="text-sm font-mono text-zinc-500">{acc.address}</p>
-                              </div>
-                            </div>
-                            {acc.isActive && (
-                              <div className="bg-primary/20 px-3 py-1 rounded-full">
-                                <span className="text-xs font-bold text-primary">Active</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                       <Users size={40} className="mb-4 opacity-20" />
-                       <p className="text-sm">Connect your wallet to view accounts</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'tokens' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold">Token Balances</h3>
-                  
-                  {/* Native Token */}
-                  <div className="p-6 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-zinc-100 flex items-center justify-center text-2xl">
-                        E
-                      </div>
-                      <div>
-                        <p className="font-bold text-lg">ETH</p>
-                        <p className="text-sm text-zinc-500">{network}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-lg">{balance} ETH</p>
-                      <p className="text-sm text-zinc-500">= ${(parseFloat(balance) * 2500).toFixed(2)}</p>
-                    </div>
-                  </div>
-                  
-                  {tokens.length > 0 ? (
-                    <div className="space-y-3">
-                      {tokens.map((token, i) => (
-                        <div key={i} className="p-6 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-xl bg-zinc-800 flex items-center justify-center text-lg font-bold">
-                              {token.symbol[0]}
-                            </div>
-                            <div>
-                              <p className="font-bold text-lg">{token.symbol}</p>
-                              <p className="text-xs font-mono text-zinc-500">{token.address.slice(0, 10)}...</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold text-lg">{token.balance} {token.symbol}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-12 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                       <Coins size={32} className="mb-4 opacity-20" />
-                       <p className="text-sm">No custom tokens added</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'transactions' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold">Transaction History</h3>
-                  
-                  {transactions.length > 0 ? (
-                    <div className="space-y-3">
-                      {transactions.map((tx, i) => (
-                        <TransactionRow key={i} tx={tx} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                       <Activity size={40} className="mb-4 opacity-20" />
-                       <p className="text-sm">No transactions found on {network}.</p>
-                       <p className="text-xs text-zinc-600 mt-2">Transactions will appear here after you send or receive assets.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'connections' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold">Connected Sites</h3>
-                  
-                  {connectedSites.length > 0 ? (
-                    <div className="space-y-3">
-                      {connectedSites.map((site, i) => (
-                        <div key={i} className="p-6 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center">
-                              <Plug size={18} className="text-zinc-400" />
-                            </div>
-                            <div>
-                              <p className="font-bold">{site.origin}</p>
-                              <p className="text-xs text-zinc-500">Connected: {new Date(site.connectedAt).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          <button className="px-4 py-2 text-xs font-bold text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors">
-                            Disconnect
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                       <Plug size={40} className="mb-4 opacity-20" />
-                       <p className="text-sm">No sites connected</p>
-                       <p className="text-xs text-zinc-600 mt-2">Connected dApps will appear here</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'mcp' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold">MCP Server Status</h3>
-                  
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="p-8 rounded-2xl bg-zinc-900/40 border border-white/5">
-                      <div className="flex items-center gap-4 mb-6">
+              {activeTab === 'settings' && (
+                <div className="space-y-10">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* MCP Server Status */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 shadow-xl">
+                      <div className="flex items-center gap-4 mb-8">
                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
                           mcpConnected ? 'bg-green-500/10 border border-green-500/20' : 'bg-yellow-500/10 border border-yellow-500/20'
                         }`}>
                           <Server size={28} className={mcpConnected ? 'text-green-400' : 'text-yellow-400'} />
                         </div>
                         <div>
-                          <p className="font-bold text-lg">MCP Connection</p>
+                          <p className="font-bold text-lg">MCP Server</p>
                           <p className={`text-sm ${mcpConnected ? 'text-green-400' : 'text-yellow-400'}`}>
                             {mcpConnected ? 'Connected' : 'Connecting...'}
                           </p>
                         </div>
                       </div>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Server</span>
-                          <span className="font-mono">ws://localhost:8080/mcp</span>
+                      <div className="space-y-4 text-sm">
+                        <div className="flex justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+                          <span className="text-zinc-500 font-medium">Server URL</span>
+                          <span className="font-mono text-zinc-300 italic">vibe-wallet-mcp.fly.dev</span>
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Status</span>
-                          <span className={mcpConnected ? 'text-green-400' : 'text-yellow-400'}>
+                        <div className="flex justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+                          <span className="text-zinc-500 font-medium">Status</span>
+                          <span className={mcpConnected ? 'text-green-400 font-bold' : 'text-yellow-400 font-bold animate-pulse'}>
                             {mcpConnected ? 'Online' : 'Reconnecting'}
                           </span>
                         </div>
+                        <div className="flex justify-between p-3 bg-black/20 rounded-xl border border-white/5">
+                          <span className="text-zinc-500 font-medium">Active Pairings</span>
+                          <span className="text-white font-bold">{instances.length}</span>
+                        </div>
                       </div>
                     </div>
-                    
-                    <div className="p-8 rounded-2xl bg-zinc-900/40 border border-white/5">
-                      <div className="flex items-center gap-4 mb-6">
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
-                          <Monitor size={28} className="text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-lg">Extension Instance</p>
-                          <p className="text-sm text-zinc-500">Current Browser</p>
-                        </div>
+
+                    {/* Connected Sites */}
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 shadow-xl flex flex-col">
+                      <div className="flex items-center justify-between mb-8">
+                        <h3 className="text-xl font-bold flex items-center gap-2">
+                          <Plug size={20} className="text-primary" /> Connected Sites
+                        </h3>
                       </div>
-                      <div className="space-y-3 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Active Account</span>
-                          <span className="font-medium">{accountName}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Network</span>
-                          <span className="font-medium">{network}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-zinc-500">Address</span>
-                          <span className="font-mono text-xs">{address.slice(0, 10)}...</span>
-                        </div>
+                      <div className="flex-1 min-h-[150px]">
+                        {connectedSites.length > 0 ? (
+                          <div className="space-y-3">
+                            {connectedSites.map((site, i) => (
+                              <div key={i} className="p-4 rounded-2xl bg-black/20 border border-white/5 flex items-center justify-between hover:bg-black/40 transition-colors">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center">
+                                    <Globe size={14} className="text-zinc-400" />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-xs">{site.origin}</p>
+                                    <p className="text-[9px] text-zinc-500">Connected: {new Date(site.connectedAt).toLocaleDateString()}</p>
+                                  </div>
+                                </div>
+                                <button className="px-3 py-1.5 text-[10px] font-black uppercase italic text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all border border-red-500/10">
+                                  Disconnect
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-zinc-500 py-6">
+                            <Plug size={32} className="mb-2 opacity-10" />
+                            <p className="text-[11px] font-medium uppercase tracking-widest">No active connections</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                  
-                  {instances.length > 0 && (
-                    <div className="mt-8">
-                      <h4 className="font-bold mb-4">Connected Instances</h4>
-                      <div className="space-y-3">
+
+                  {/* Connected Instances */}
+                  <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 shadow-xl">
+                    <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                      <Monitor size={20} className="text-primary" /> Connected Instances
+                    </h3>
+                    {instances.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {instances.map((inst, i) => (
-                          <div key={i} className={`p-4 rounded-xl border ${
-                            inst.isActive ? 'bg-primary/5 border-primary/30' : 'bg-zinc-900/40 border-white/5'
+                          <div key={i} className={`p-5 rounded-2xl border transition-all ${
+                            inst.isActive ? 'bg-primary/5 border-primary/30 shadow-[0_0_20px_rgba(139,92,246,0.05)]' : 'bg-black/20 border-white/5'
                           }`}>
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between mb-4">
                               <div className="flex items-center gap-3">
-                                <Monitor size={18} className={inst.isActive ? 'text-primary' : 'text-zinc-500'} />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${inst.isActive ? 'bg-primary/20 text-primary' : 'bg-zinc-800 text-zinc-500'}`}>
+                                  <Monitor size={20} />
+                                </div>
                                 <div>
-                                  <p className="font-medium">{inst.browser}</p>
-                                  <p className="text-xs text-zinc-500">{inst.activeAccount} / {inst.activeChain}</p>
+                                  <p className="font-bold text-sm uppercase tracking-tighter">{inst.browser}</p>
+                                  <p className="text-[10px] text-zinc-500 font-mono italic">{inst.id}</p>
                                 </div>
                               </div>
                               {inst.isActive && (
-                                <span className="text-[10px] font-bold text-primary uppercase">Active</span>
+                                <div className="px-2 py-1 bg-primary rounded-full text-[8px] font-black uppercase tracking-widest italic">Active</div>
                               )}
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-zinc-500 uppercase font-bold tracking-widest">Account</span>
+                                <span className="text-zinc-300">{inst.activeAccount}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-zinc-500 uppercase font-bold tracking-widest">Network</span>
+                                <span className="text-zinc-300">{inst.activeChain}</span>
+                              </div>
                             </div>
                           </div>
                         ))}
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    ) : (
+                      <div className="py-12 flex flex-col items-center justify-center text-zinc-600 border border-dashed border-white/5 rounded-[24px]">
+                        <Activity size={32} className="mb-2 opacity-10" />
+                        <p className="text-xs uppercase tracking-[0.2em] font-bold">No other instances connected</p>
+                      </div>
+                    )}
+                  </div>
 
-              {activeTab === 'settings' && (
-                <div className="space-y-6">
-                  <h3 className="text-xl font-bold">Settings</h3>
-                  <div className="p-8 rounded-2xl bg-zinc-900/40 border border-white/5">
-                    <h4 className="font-bold mb-4">About</h4>
-                    <p className="text-sm text-zinc-400">Vibe Wallet Dashboard v1.0.0</p>
-                    <p className="text-xs text-zinc-500 mt-2">MCP-controlled wallet for developers and AI agents.</p>
+                  <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5">
+                    <h4 className="font-black italic uppercase tracking-tighter text-xl mb-4">Vibe Wallet v1.2.1</h4>
+                    <p className="text-sm text-zinc-500 font-medium">Zero-Config AI-native Ethereum wallet powered by MCP. Built for the future of agentic coding.</p>
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+// ... rest of file (remove separate tab handlers)
             </div>
           )}
         </div>
@@ -834,29 +824,40 @@ function NavItem({ icon, label, active, onClick }: { icon: any, label: string, a
 
 function TransactionRow({ tx }: { tx: Transaction }) {
   const isReceive = tx.type === 'receive';
+  const isDeploy = tx.to === 'Contract';
   
   return (
-    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between hover:border-white/10 transition-colors">
+    <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between hover:bg-zinc-900/60 transition-all group">
       <div className="flex items-center gap-4">
-        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-          isReceive ? 'bg-green-500/10' : 'bg-primary/10'
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center border ${
+          isReceive ? 'bg-green-500/10 border-green-500/20' : 
+          isDeploy ? 'bg-secondary/10 border-secondary/20' :
+          'bg-primary/10 border-primary/20'
         }`}>
           {isReceive ? (
             <ArrowDownLeft size={18} className="text-green-400" />
+          ) : isDeploy ? (
+            <Layers size={18} className="text-secondary" />
           ) : (
             <ArrowUpRight size={18} className="text-primary" />
           )}
         </div>
         <div>
-          <p className="font-medium">{isReceive ? 'Received' : 'Sent'}</p>
-          <p className="text-xs font-mono text-zinc-500">{tx.hash.slice(0, 10)}...</p>
+          <p className="font-black text-[11px] uppercase tracking-widest italic text-white group-hover:text-primary transition-colors">
+            {isReceive ? 'Received ETH' : isDeploy ? 'Contract Deployment' : 'Sent ETH'}
+          </p>
+          <p className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-400 transition-colors">
+            {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
+          </p>
         </div>
       </div>
       <div className="text-right">
-        <p className={`font-bold ${isReceive ? 'text-green-400' : 'text-white'}`}>
-          {isReceive ? '+' : '-'}{tx.value} ETH
+        <p className={`font-black tracking-tight ${isReceive ? 'text-green-400' : 'text-white'}`}>
+          {isReceive ? '+' : '-'}{(Number(tx.value) / 1e18).toFixed(4)} <span className="text-[10px] opacity-40 font-normal">ETH</span>
         </p>
-        <p className="text-xs text-zinc-500">{new Date(tx.timestamp).toLocaleDateString()}</p>
+        <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter">
+          {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </p>
       </div>
     </div>
   );
