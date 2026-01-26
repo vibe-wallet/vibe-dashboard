@@ -6,8 +6,8 @@ A premium web visualization suite for the Vibe Wallet ecosystem. Monitor your AI
 
 - **Real-time Monitoring**: Connects directly to the extension via the injected provider.
 - **Multi-Instance View**: See all your browser profiles and connected devices.
-- **Token Portfolio**: Visual representation of your native ETH and custom ERC-20 balances.
-- **Account Management**: Switch between your named accounts (Main, Bot, Trading, etc.).
+- **Multi-Chain View**: Toggle between Ethereum (EVM) and Solana (SPL) portfolios seamlessly.
+- **Account Management**: Interactive switcher for your named accounts (Main, Bot, Trading, etc.).
 - **Transaction History**: View recent on-chain activity with status indicators.
 - **Cyberpunk UI**: High-performance dark mode interface with Framer Motion animations.
 
