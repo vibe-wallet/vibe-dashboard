@@ -510,7 +510,6 @@ function App() {
                             { id: 'base-sepolia', name: 'Base Sepolia' },
                             { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia' },
                             { id: 'solana-devnet', name: 'Solana Devnet' },
-                            { id: 'solana-testnet', name: 'Solana Testnet' },
                             { id: 'solana-mainnet', name: 'Solana Mainnet' }
                           ].map((net) => (
                             <button
