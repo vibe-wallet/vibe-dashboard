@@ -24,6 +24,7 @@ import {
 interface WalletAccount {
   name: string;
   address: string;
+  type: 'evm' | 'solana';
   isActive: boolean;
 }
 
@@ -94,12 +95,24 @@ function App() {
     return null;
   };
 
-  const updateNetwork = (hexId: string) => {
-    if (!hexId) return;
+  const updateNetwork = (idOrKey: string) => {
+    if (!idOrKey) return;
     try {
-      const id = typeof hexId === 'string' && hexId.startsWith('0x') 
-        ? parseInt(hexId, 16) 
-        : parseInt(hexId);
+      // Handle Solana keys directly
+      if (idOrKey === 'solana-devnet') {
+        setNetwork('Solana Devnet');
+        setChainId(0);
+        return;
+      }
+      if (idOrKey === 'solana-mainnet') {
+        setNetwork('Solana Mainnet');
+        setChainId(0);
+        return;
+      }
+
+      const id = typeof idOrKey === 'string' && idOrKey.startsWith('0x') 
+        ? parseInt(idOrKey, 16) 
+        : parseInt(idOrKey);
       
       if (isNaN(id)) return;
       
@@ -108,11 +121,7 @@ function App() {
         11155111: 'Sepolia',
         84532: 'Base Sepolia',
         421614: 'Arbitrum Sepolia',
-        1: 'Ethereum Mainnet',
-        137: 'Polygon',
-        42161: 'Arbitrum One',
-        10: 'Optimism',
-        8453: 'Base'
+        1: 'Ethereum Mainnet'
       };
       setNetwork(networks[id] || `Chain ID: ${id}`);
     } catch (e) {
@@ -143,10 +152,19 @@ function App() {
             const b = bal.startsWith('0x') ? BigInt(bal) : BigInt(bal);
             setBalance((Number(b) / 1e18).toFixed(4));
           } else {
-            setBalance("0.0000");
+            // Might be Solana balance (decimal string)
+            const b = parseFloat(bal);
+            if (!isNaN(b)) setBalance(b.toFixed(4));
+            else setBalance("0.0000");
           }
         } catch (e) {
-          console.error('Balance fetch failed:', e);
+          // Try Solana balance
+          try {
+            const bal = await provider.request({ method: 'solana_getBalance' });
+            setBalance((parseFloat(bal) / 1e9).toFixed(4));
+          } catch {
+            setBalance("0.0000");
+          }
         }
         
         // Get chain
@@ -172,6 +190,7 @@ function App() {
             setAccounts(accountsList.map((a: any) => ({
               name: a.name,
               address: a.address,
+              type: a.type || 'evm',
               isActive: a.isActive
             })));
             
@@ -180,7 +199,7 @@ function App() {
             if (active) setAccountName(active.name);
           }
         } catch {
-          setAccounts([{ name: accountName, address: accs[0], isActive: true }]);
+          setAccounts([{ name: accountName, address: accs[0], type: 'evm', isActive: true }]);
         }
 
         // Try to get tokens
@@ -577,7 +596,9 @@ function App() {
                           {[
                             { id: 'sepolia', name: 'Sepolia' },
                             { id: 'base-sepolia', name: 'Base Sepolia' },
-                            { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia' }
+                            { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia' },
+                            { id: 'solana-devnet', name: 'Solana Devnet' },
+                            { id: 'solana-mainnet', name: 'Solana Mainnet' }
                           ].map((net) => (
                             <button
                               key={net.id}
