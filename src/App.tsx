@@ -566,13 +566,16 @@ function App() {
                             <button
                               key={net.id}
                               onClick={(e) => { e.stopPropagation(); switchNetwork(net.id); }}
-                              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left group/item"
+                              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left group/item ${
+                                network.includes(net.name) 
+                                  ? 'bg-primary/10 border border-primary/20' 
+                                  : 'hover:bg-white/5 border border-transparent'
+                              }`}
                             >
-                              <div className={`w-1.5 h-1.5 rounded-full ${network.includes(net.name) ? 'bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]' : 'bg-zinc-700'}`} />
+                              <div className={`w-2 h-2 rounded-full ${network.includes(net.name) ? 'bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]' : 'bg-zinc-700'}`} />
                               <span className={`text-xs font-black uppercase tracking-widest italic ${network.includes(net.name) ? 'text-primary' : 'text-zinc-400 group-hover/item:text-zinc-200'}`}>
                                 {net.name}
                               </span>
-                              {network.includes(net.name) && <Check size={12} className="ml-auto text-primary" />}
                             </button>
                           ))}
                         </div>
@@ -594,9 +597,9 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                     {/* Accounts Section */}
-                    <div className="space-y-6">
+                    <div className="space-y-6 h-full flex flex-col">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xl font-bold flex items-center gap-2">
                           <Users size={20} className="text-primary" /> Accounts
@@ -661,7 +664,7 @@ function App() {
                     </div>
 
                     {/* Tokens Section */}
-                    <div className="space-y-6">
+                    <div className="space-y-6 h-full flex flex-col">
                       <h3 className="text-xl font-bold flex items-center gap-2">
                         <Coins size={20} className="text-primary" /> Tokens
                       </h3>
