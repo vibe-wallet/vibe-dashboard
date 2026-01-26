@@ -120,15 +120,22 @@ function App() {
     }
   }, []);
 
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   // Fetch all wallet data
   const refreshData = useCallback(async () => {
     const provider = getVibeProvider();
-    if (!provider) return;
+    if (!provider || isRefreshing) return;
 
     try {
+      setIsRefreshing(true);
       // Get all accounts from our custom tool (it includes type and active status)
       const accountsList = await provider.request({ method: 'wallet_listAccounts' });
-      if (!Array.isArray(accountsList)) return;
+      if (!Array.isArray(accountsList)) {
+        setIsRefreshing(false);
+        return;
+      }
+
 
       const formattedAccounts = accountsList.map((a: any) => ({
         name: a.name,
@@ -211,8 +218,10 @@ function App() {
       setLastUpdate(new Date());
     } catch (e) {
       console.error('Refresh failed:', e);
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [updateNetwork]);
+  }, [updateNetwork, isRefreshing]);
 
   // Connect to Extension
   const connectWallet = async () => {
@@ -239,19 +248,19 @@ function App() {
     }
   };
 
-  // Switch account
   const switchAccount = async (name: string) => {
     const provider = getVibeProvider();
     if (!provider) return;
     
     try {
-      // This is a custom method we expose
+      console.log('Switching account to:', name);
       await provider.request({ 
-        method: 'wallet_switchAccount', 
-        params: [{ accountName: name }] 
+        method: 'wallet_selectAccount', 
+        params: { accountName: name }
       });
       setShowAccountSelector(false);
-      await refreshData();
+      // Wait a bit for storage to propagate
+      setTimeout(() => refreshData(), 500);
     } catch (e) {
       console.error('Failed to switch account:', e);
     }
