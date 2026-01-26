@@ -606,7 +606,7 @@ function App() {
                         </h3>
                         
                         {/* Chain Type Toggle */}
-                        <div className="flex bg-black/40 rounded-xl p-1 border border-white/5">
+                        <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 h-fit">
                            <button 
                              onClick={() => setChainType('evm')}
                              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${chainType === 'evm' ? 'bg-primary text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
