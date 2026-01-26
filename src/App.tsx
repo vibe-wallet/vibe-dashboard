@@ -94,18 +94,23 @@ function App() {
         setChainId(0);
         return;
       }
+      if (idOrKey === 'solana-testnet') {
+        setNetwork('Solana Testnet');
+        setChainId(0);
+        return;
+      }
       if (idOrKey === 'solana-mainnet') {
         setNetwork('Solana Mainnet');
         setChainId(0);
         return;
       }
 
-      const id = typeof idOrKey === 'string' && idOrKey.startsWith('0x') 
-        ? parseInt(idOrKey, 16) 
+      const id = typeof idOrKey === 'string' && idOrKey.startsWith('0x')
+        ? parseInt(idOrKey, 16)
         : parseInt(idOrKey);
-      
+
       if (isNaN(id)) return;
-      
+
       setChainId(id);
       const networks: Record<number, string> = {
         11155111: 'Sepolia',
@@ -505,6 +510,7 @@ function App() {
                             { id: 'base-sepolia', name: 'Base Sepolia' },
                             { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia' },
                             { id: 'solana-devnet', name: 'Solana Devnet' },
+                            { id: 'solana-testnet', name: 'Solana Testnet' },
                             { id: 'solana-mainnet', name: 'Solana Mainnet' }
                           ].map((net) => (
                             <button
