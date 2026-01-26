@@ -572,12 +572,17 @@ function App() {
                                   : 'hover:bg-white/5 border border-transparent'
                               }`}
                             >
-                              <div className={`w-2 h-2 rounded-full ${network.includes(net.name) ? 'bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]' : 'bg-zinc-700'}`} />
+                              {network.includes(net.name) ? (
+                                <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]" />
+                              ) : (
+                                <div className="w-2 h-2 rounded-full border border-zinc-600" />
+                              )}
                               <span className={`text-xs font-black uppercase tracking-widest italic ${network.includes(net.name) ? 'text-primary' : 'text-zinc-400 group-hover/item:text-zinc-200'}`}>
                                 {net.name}
                               </span>
                             </button>
                           ))}
+
                         </div>
                       )}
                       
@@ -606,7 +611,7 @@ function App() {
                         </h3>
                         
                         {/* Chain Type Toggle */}
-                        <div className="flex bg-black/40 rounded-xl p-1 border border-white/5">
+                        <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 h-fit">
                            <button 
                              onClick={() => setChainType('evm')}
                              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${chainType === 'evm' ? 'bg-primary text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
