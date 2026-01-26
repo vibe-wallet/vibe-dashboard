@@ -36,16 +36,6 @@ interface ConnectedInstance {
   isActive: boolean;
 }
 
-interface Transaction {
-  hash: string;
-  from: string;
-  to: string;
-  value: string;
-  timestamp: number;
-  status: 'pending' | 'success' | 'failed';
-  type: 'send' | 'receive';
-}
-
 interface Token {
   address: string;
   symbol: string;
@@ -65,11 +55,12 @@ function App() {
   const [isWrongWallet, setIsWrongWallet] = useState(false);
   const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = useState(false);
+  const [chainType, setChainType] = useState<'evm' | 'solana'>('evm');
   
   // Multi-account state
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
   const [instances, setInstances] = useState<ConnectedInstance[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [tokens, setTokens] = useState<Token[]>([]);
   const [connectedSites, setConnectedSites] = useState<any[]>([]);
   
@@ -132,132 +123,96 @@ function App() {
   // Fetch all wallet data
   const refreshData = useCallback(async () => {
     const provider = getVibeProvider();
-    if (!provider) {
-      console.log('Provider not found during refresh');
-      return;
-    }
+    if (!provider) return;
 
     try {
-      console.log('Refreshing dashboard data...');
-      // Get accounts
-      const accs = await provider.request({ method: 'eth_accounts' });
-      console.log('Got accounts:', accs);
-      
-      if (accs && Array.isArray(accs) && accs.length > 0) {
-        // Initial connection if not set
-        if (address === '0x0000...0000') {
-          setAddress(accs[0]);
-        }
-        setIsConnected(true);
-        
-        // Get balance
+      // Get all accounts from our custom tool (it includes type and active status)
+      const accountsList = await provider.request({ method: 'wallet_listAccounts' });
+      if (!Array.isArray(accountsList)) return;
+
+      const formattedAccounts = accountsList.map((a: any) => ({
+        name: a.name,
+        address: a.address,
+        type: a.type || 'evm',
+        isActive: a.isActive
+      }));
+
+      setAccounts(formattedAccounts);
+      setIsConnected(true);
+
+      // Find active account
+      const active = formattedAccounts.find(a => a.isActive);
+      if (active) {
+        setAccountName(active.name);
+        setAddress(active.address);
+        // Only set chainType based on active if we haven't manually toggled it? 
+        // Or just always follow active.
+        // setChainType(active.type); 
+      }
+
+      // Get balance for current active
+      if (active) {
         try {
-          const bal = await provider.request({ 
-            method: 'eth_getBalance', 
-            params: [accs[0], 'latest'] 
-          });
-          console.log('Got balance:', bal);
-          
-          if (typeof bal === 'string') {
-            const b = bal.startsWith('0x') ? BigInt(bal) : BigInt(bal);
-            setBalance((Number(b) / 1e18).toFixed(4));
-          } else if (typeof bal === 'number') {
-            setBalance((bal / 1e18).toFixed(4));
+          if (active.type === 'solana') {
+            const bal = await provider.request({ method: 'solana_getBalance' });
+            setBalance((parseFloat(bal) / 1e9).toFixed(4));
           } else {
-            setBalance("0.0000");
+            const bal = await provider.request({ 
+              method: 'eth_getBalance', 
+              params: [active.address, 'latest'] 
+            });
+            const b = typeof bal === 'string' && bal.startsWith('0x') ? BigInt(bal) : BigInt(bal || 0);
+            setBalance((Number(b) / 1e18).toFixed(4));
           }
         } catch (e) {
           console.error('Balance fetch failed:', e);
         }
-        
-        // Get chain
-        try {
-          const chain = await provider.request({ method: 'eth_chainId' });
-          console.log('Got chain ID:', chain);
-          updateNetwork(chain);
-        } catch (e) {
-          console.error('Chain fetch failed:', e);
-        }
-        
-        // Get account name
-        try {
-          const name = await provider.request({ method: 'eth_activeAccountName' });
-          if (name) setAccountName(name);
-        } catch {
-          setAccountName('Vibe Account');
-        }
-
-        // Try to get wallet accounts list
-        try {
-          const accountsList = await provider.request({ method: 'wallet_listAccounts' });
-          if (Array.isArray(accountsList)) {
-            setAccounts(accountsList.map((a: any) => ({
-              name: a.name,
-              address: a.address,
-              type: a.type || 'evm',
-              isActive: a.isActive
-            })));
-            
-            // Sync active account details correctly
-            const active = accountsList.find(a => a.isActive);
-            if (active) {
-              setAccountName(active.name);
-              setAddress(active.address);
-            } else if (accs.length > 0) {
-              setAddress(accs[0]);
-            }
-          }
-        } catch (e) {
-          console.error('Accounts list fetch failed:', e);
-          // Fallback - don't use accountName from state to avoid dependency loop
-          setAccounts([{ name: 'Vibe Account', address: accs[0], type: 'evm', isActive: true }]);
-        }
-
-        // Try to get tokens
-        try {
-          const tokensList = await provider.request({ method: 'wallet_getTokens' });
-          if (Array.isArray(tokensList)) {
-            setTokens(tokensList);
-          }
-        } catch {
-          // No tokens
-        }
-
-        // Try to get connected sites
-        try {
-          const sites = await provider.request({ method: 'wallet_getConnectedSites' });
-          if (Array.isArray(sites)) {
-            setConnectedSites(sites);
-          }
-        } catch {
-          // No sites
-        }
-
-        // Try to get transaction history
-        try {
-          const history = await provider.request({ method: 'wallet_getTransactionHistory' });
-          if (Array.isArray(history)) {
-            setTransactions(history.map(tx => ({
-              hash: tx.hash,
-              from: tx.from,
-              to: tx.params?.to || 'Contract',
-              value: tx.params?.value ? (BigInt(tx.params.value).toString()) : '0',
-              timestamp: tx.timestamp,
-              status: 'success',
-              type: tx.type === 'deploy' ? 'send' : tx.type
-            })));
-          }
-        } catch (e) {
-          console.error('History fetch failed:', e);
-        }
-        
-        setLastUpdate(new Date());
-        setIsConnected(true);
       }
+
+      // Get chain
+      try {
+        const chain = await provider.request({ method: 'eth_chainId' });
+        updateNetwork(chain);
+      } catch {}
+
+      // Get history
+      try {
+        const history = await provider.request({ method: 'wallet_getTransactionHistory' });
+        if (Array.isArray(history)) {
+          setTransactions(history.map(tx => ({
+            hash: tx.hash,
+            from: tx.from,
+            to: tx.params?.to || 'Contract',
+            value: tx.params?.value ? (BigInt(tx.params.value).toString()) : '0',
+            timestamp: tx.timestamp,
+            status: 'success',
+            type: tx.type === 'deploy' ? 'send' : tx.type,
+            walletType: tx.walletType
+          })));
+        }
+      } catch {}
+
+      // Try to get tokens
+      try {
+        const tokensList = await provider.request({ method: 'wallet_getTokens' });
+        if (Array.isArray(tokensList)) {
+          setTokens(tokensList);
+        }
+      } catch {}
+
+      // Try to get connected sites
+      try {
+        const sites = await provider.request({ method: 'wallet_getConnectedSites' });
+        if (Array.isArray(sites)) {
+          setConnectedSites(sites);
+        }
+      } catch {}
+
+      setLastUpdate(new Date());
     } catch (e) {
       console.error('Refresh failed:', e);
     }
-  }, []);
+  }, [updateNetwork]);
 
   // Connect to Extension
   const connectWallet = async () => {
@@ -322,37 +277,20 @@ function App() {
   useEffect(() => {
     const provider = getVibeProvider();
     if (provider) {
-      // Listen for changes
-      provider.on('accountsChanged', (newAccounts: string[]) => {
-        if (newAccounts.length > 0) {
-          // If the first account changed, or if we weren't connected, refresh everything
-          refreshData();
-        } else {
-          setIsConnected(false);
-          setAddress('0x0000...0000');
-        }
-      });
+      // Single combined refresh for any changes
+      const triggerRefresh = () => refreshData();
 
-      provider.on('chainChanged', (chainId: string) => {
-        updateNetwork(chainId);
-        refreshData();
-      });
+      provider.on('accountsChanged', triggerRefresh);
+      provider.on('chainChanged', triggerRefresh);
 
-      // Auto-connect if already authorized
-      provider.request({ method: 'eth_accounts' }).then(async (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAddress(accounts[0]);
-          setIsConnected(true);
+      // Initial Eager Connection
+      provider.request({ method: 'eth_accounts' }).then(async (accs: string[]) => {
+        if (accs.length > 0) {
           await refreshData();
         } else {
-          // Eagerly try to connect if it's our dashboard
           try {
-            const accs = await provider.request({ method: 'eth_requestAccounts' });
-            if (accs.length > 0) {
-              setAddress(accs[0]);
-              setIsConnected(true);
-              await refreshData();
-            }
+            await provider.request({ method: 'eth_requestAccounts' });
+            await refreshData();
           } catch (e) {
             console.log('Eager connection declined');
           }
@@ -362,7 +300,6 @@ function App() {
       setIsWrongWallet(true);
     }
 
-    // Auto-refresh every 10 seconds
     const interval = setInterval(refreshData, 10000);
     return () => clearInterval(interval);
   }, [refreshData]);
@@ -508,13 +445,20 @@ function App() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black ${
-                            acc.isActive ? 'bg-primary text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]' : 'bg-zinc-800 text-zinc-500'
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black transition-all ${
+                            acc.isActive 
+                              ? (acc.type === 'solana' ? 'bg-secondary text-white shadow-[0_0_15px_rgba(20,184,166,0.4)]' : 'bg-primary text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]')
+                              : 'bg-zinc-800 text-zinc-500'
                           }`}>
                             {acc.name[0]}
                           </div>
                           <div className="text-left">
-                            <p className={`text-xs font-black uppercase italic tracking-tighter ${acc.isActive ? 'text-primary' : ''}`}>{acc.name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className={`text-xs font-black uppercase italic tracking-tighter ${acc.isActive ? (acc.type === 'solana' ? 'text-secondary' : 'text-primary') : ''}`}>{acc.name}</p>
+                              <span className={`text-[7px] font-black px-1 py-0.2 rounded border ${acc.type === 'solana' ? 'bg-secondary/10 border-secondary/20 text-secondary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+                                {acc.type?.toUpperCase()}
+                              </span>
+                            </div>
                             <p className="text-[10px] font-mono opacity-50 tracking-tighter">{acc.address.slice(0, 10)}...{acc.address.slice(-8)}</p>
                           </div>
                         </div>
@@ -648,34 +592,62 @@ function App() {
                         <h3 className="text-xl font-bold flex items-center gap-2">
                           <Users size={20} className="text-primary" /> Accounts
                         </h3>
+                        
+                        {/* Chain Type Toggle */}
+                        <div className="flex bg-black/40 rounded-xl p-1 border border-white/5">
+                           <button 
+                             onClick={() => setChainType('evm')}
+                             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${chainType === 'evm' ? 'bg-primary text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                           >
+                             EVM
+                           </button>
+                           <button 
+                             onClick={() => setChainType('solana')}
+                             className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${chainType === 'solana' ? 'bg-secondary text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                           >
+                             SOL
+                           </button>
+                        </div>
                       </div>
                       <div className="grid gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                        {accounts.map((acc, i) => (
+                        {accounts.filter(a => a.type === chainType).map((acc, i) => (
                           <div 
                             key={i}
-                            className={`p-4 rounded-2xl border transition-all cursor-pointer ${
+                            className={`p-4 rounded-2xl border transition-all cursor-pointer group ${
                               acc.isActive 
-                                ? 'bg-primary/5 border-primary/30' 
+                                ? (acc.type === 'solana' ? 'bg-secondary/5 border-secondary/30' : 'bg-primary/5 border-primary/30')
                                 : 'bg-zinc-900/40 border-white/5 hover:border-white/10'
                             }`}
                             onClick={() => switchAccount(acc.name)}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black ${
-                                  acc.isActive ? 'bg-primary text-white' : 'bg-zinc-800 text-zinc-400'
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-black transition-all ${
+                                  acc.isActive 
+                                    ? (acc.type === 'solana' ? 'bg-secondary text-white shadow-[0_0_15px_rgba(20,184,166,0.4)]' : 'bg-primary text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]')
+                                    : 'bg-zinc-800 text-zinc-400 group-hover:bg-zinc-700'
                                 }`}>
                                   {acc.name[0]}
                                 </div>
                                 <div>
-                                  <p className="font-bold text-sm">{acc.name}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className={`font-bold text-sm ${acc.isActive ? (acc.type === 'solana' ? 'text-secondary' : 'text-primary') : ''}`}>{acc.name}</p>
+                                    <span className={`text-[8px] font-black px-1.5 py-0.5 rounded border ${acc.type === 'solana' ? 'bg-secondary/10 border-secondary/20 text-secondary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+                                      {acc.type?.toUpperCase()}
+                                    </span>
+                                  </div>
                                   <p className="text-[10px] font-mono text-zinc-500">{acc.address.slice(0, 10)}...{acc.address.slice(-8)}</p>
                                 </div>
                               </div>
-                              {acc.isActive && <Check size={14} className="text-primary" />}
+                              {acc.isActive && <Check size={14} className={acc.type === 'solana' ? 'text-secondary' : 'text-primary'} />}
                             </div>
                           </div>
                         ))}
+                        {accounts.filter(a => a.type === chainType).length === 0 && (
+                          <div className="py-10 text-center border border-dashed border-white/5 rounded-2xl">
+                             <p className="text-xs text-zinc-600 uppercase tracking-widest font-bold">No {chainType.toUpperCase()} accounts found</p>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -685,29 +657,31 @@ function App() {
                         <Coins size={20} className="text-primary" /> Tokens
                       </h3>
                       <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
+                        <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between group hover:bg-zinc-900/60 transition-all">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-zinc-100 flex items-center justify-center text-black font-bold">Ξ</div>
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold border ${chainType === 'solana' ? 'bg-secondary text-white border-secondary/20' : 'bg-zinc-100 text-black border-white/10'}`}>
+                              {chainType === 'solana' ? 'S' : 'Ξ'}
+                            </div>
                             <div>
-                              <p className="font-bold text-sm">ETH</p>
-                              <p className="text-[10px] text-zinc-500">{network}</p>
+                              <p className="font-bold text-sm">{chainType === 'solana' ? 'SOL' : 'ETH'}</p>
+                              <p className="text-[10px] text-zinc-500 uppercase tracking-tighter">{network}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-bold text-sm">{balance} ETH</p>
-                            <p className="text-[10px] text-zinc-500">${(parseFloat(balance) * 2500).toFixed(2)}</p>
+                            <p className={`font-black text-sm ${chainType === 'solana' ? 'text-secondary' : 'text-white'}`}>{balance} {chainType === 'solana' ? 'SOL' : 'ETH'}</p>
+                            <p className="text-[10px] text-zinc-500 font-medium">${(parseFloat(balance) * (chainType === 'solana' ? 140 : 2500)).toFixed(2)}</p>
                           </div>
                         </div>
-                        {tokens.map((token, i) => (
-                          <div key={i} className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between">
+                        {tokens.filter(t => (chainType === 'solana' ? t.chainId === 0 : t.chainId !== 0)).map((token, i) => (
+                          <div key={i} className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between hover:bg-zinc-900/60 transition-all">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-sm font-bold">{token.symbol[0]}</div>
+                              <div className="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center text-sm font-bold border border-white/5">{token.symbol[0]}</div>
                               <div>
                                 <p className="font-bold text-sm">{token.symbol}</p>
-                                <p className="text-[10px] text-zinc-500 font-mono">{token.address.slice(0, 10)}...</p>
+                                <p className="text-[10px] text-zinc-500 font-mono tracking-tighter">{token.address.slice(0, 10)}...</p>
                               </div>
                             </div>
-                            <div className="text-right font-bold text-sm">{token.balance} {token.symbol}</div>
+                            <div className="text-right font-black text-sm text-zinc-300">{token.balance} {token.symbol}</div>
                           </div>
                         ))}
                       </div>
@@ -888,9 +862,10 @@ function NavItem({ icon, label, active, onClick }: { icon: any, label: string, a
   );
 }
 
-function TransactionRow({ tx }: { tx: Transaction }) {
+function TransactionRow({ tx }: { tx: any }) {
   const isReceive = tx.type === 'receive';
   const isDeploy = tx.to === 'Contract';
+  const isSolana = tx.walletType === 'solana';
   
   return (
     <div className="p-4 rounded-2xl bg-zinc-900/40 border border-white/5 flex items-center justify-between hover:bg-zinc-900/60 transition-all group">
@@ -909,8 +884,11 @@ function TransactionRow({ tx }: { tx: Transaction }) {
           )}
         </div>
         <div>
-          <p className="font-black text-[11px] uppercase tracking-widest italic text-white group-hover:text-primary transition-colors">
-            {isReceive ? 'Received ETH' : isDeploy ? 'Contract Deployment' : 'Sent ETH'}
+          <p className="font-black text-[11px] uppercase tracking-widest italic text-white group-hover:text-primary transition-colors flex items-center gap-2">
+            {isReceive ? 'Received' : isDeploy ? 'Contract Deployment' : 'Sent'}
+            <span className={`text-[7px] not-italic px-1 py-0.5 rounded border ${isSolana ? 'bg-secondary/10 border-secondary/20 text-secondary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
+              {isSolana ? 'SOL' : 'EVM'}
+            </span>
           </p>
           <p className="text-[10px] font-mono text-zinc-500 group-hover:text-zinc-400 transition-colors">
             {tx.hash.slice(0, 10)}...{tx.hash.slice(-8)}
@@ -919,7 +897,7 @@ function TransactionRow({ tx }: { tx: Transaction }) {
       </div>
       <div className="text-right">
         <p className={`font-black tracking-tight ${isReceive ? 'text-green-400' : 'text-white'}`}>
-          {isReceive ? '+' : '-'}{(Number(tx.value) / 1e18).toFixed(4)} <span className="text-[10px] opacity-40 font-normal">ETH</span>
+          {isReceive ? '+' : '-'}{isSolana ? (parseFloat(tx.value) / 1e9).toFixed(4) : (Number(tx.value) / 1e18).toFixed(4)} <span className="text-[10px] opacity-40 font-normal">{isSolana ? 'SOL' : 'ETH'}</span>
         </p>
         <p className="text-[9px] font-bold text-zinc-600 uppercase tracking-tighter">
           {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
