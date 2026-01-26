@@ -63,6 +63,7 @@ function App() {
   const [isConnected, setIsConnected] = useState(false);
   const [isWrongWallet, setIsWrongWallet] = useState(false);
   const [showAccountSelector, setShowAccountSelector] = useState(false);
+  const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   
   // Multi-account state
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
@@ -268,6 +269,23 @@ function App() {
       await refreshData();
     } catch (e) {
       console.error('Failed to switch account:', e);
+    }
+  };
+
+  // Switch network
+  const switchNetwork = async (chainKey: string) => {
+    const provider = getVibeProvider();
+    if (!provider) return;
+
+    try {
+      await provider.request({
+        method: 'wallet_switchNetwork',
+        params: { chain: chainKey }
+      });
+      setShowNetworkSelector(false);
+      await refreshData();
+    } catch (e) {
+      console.error('Failed to switch network:', e);
     }
   };
 
@@ -539,15 +557,42 @@ function App() {
                       </div>
                     </div>
                     
-                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col justify-between">
+                    <div className="p-8 rounded-[32px] bg-zinc-900/40 border border-white/5 flex flex-col justify-between relative group cursor-pointer hover:border-primary/30 transition-all"
+                      onClick={() => setShowNetworkSelector(!showNetworkSelector)}
+                    >
                       <div>
                         <div className="flex items-center justify-between mb-6">
                           <h4 className="font-bold text-sm">Network</h4>
-                          <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+                          <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+                             <ChevronDown size={14} className={`text-zinc-600 transition-transform ${showNetworkSelector ? 'rotate-180' : ''}`} />
+                          </div>
                         </div>
-                        <p className="text-2xl font-bold mb-1">{network}</p>
-                        <p className="text-xs text-zinc-500">Chain ID: {chainId}</p>
+                        <p className="text-2xl font-bold mb-1 group-hover:text-primary transition-colors">{network}</p>
+                        <p className="text-xs text-zinc-500 font-mono tracking-tighter">ID: {chainId}</p>
                       </div>
+
+                      {showNetworkSelector && (
+                        <div className="absolute top-full left-0 right-0 mt-2 bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-2xl p-1.5 z-50 animate-fade-in ring-1 ring-white/5">
+                          {[
+                            { id: 'sepolia', name: 'Sepolia' },
+                            { id: 'base-sepolia', name: 'Base Sepolia' },
+                            { id: 'arbitrum-sepolia', name: 'Arbitrum Sepolia' }
+                          ].map((net) => (
+                            <button
+                              key={net.id}
+                              onClick={(e) => { e.stopPropagation(); switchNetwork(net.id); }}
+                              className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all text-left group/item"
+                            >
+                              <div className={`w-1.5 h-1.5 rounded-full ${network.includes(net.name) ? 'bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]' : 'bg-zinc-700'}`} />
+                              <span className={`text-xs font-black uppercase tracking-widest italic ${network.includes(net.name) ? 'text-primary' : 'text-zinc-400 group-hover/item:text-zinc-200'}`}>
+                                {net.name}
+                              </span>
+                              {network.includes(net.name) && <Check size={12} className="ml-auto text-primary" />}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       
                       <div className="mt-6 pt-6 border-t border-white/5">
                         <div className="flex items-center justify-between mb-3">
@@ -645,18 +690,20 @@ function App() {
                         <Activity size={20} className="text-primary" /> Recent Activity
                       </h3>
                     </div>
-                    {transactions.length > 0 ? (
-                      <div className="space-y-3">
-                        {transactions.slice(0, 10).map((tx, i) => (
-                          <TransactionRow key={i} tx={tx} />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
-                        <Activity size={40} className="mb-4 opacity-20" />
-                        <p className="text-sm">No recent transactions found on {network}.</p>
-                      </div>
-                    )}
+                    <div className="max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                      {transactions.length > 0 ? (
+                        <div className="space-y-3">
+                          {transactions.slice(0, 20).map((tx, i) => (
+                            <TransactionRow key={i} tx={tx} />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-20 rounded-[32px] bg-zinc-900/20 border border-dashed border-white/10 flex flex-col items-center justify-center text-zinc-500">
+                          <Activity size={40} className="mb-4 opacity-20" />
+                          <p className="text-sm">No recent transactions found on {network}.</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                 </>
@@ -690,10 +737,6 @@ function App() {
                           <span className={mcpConnected ? 'text-green-400 font-bold' : 'text-yellow-400 font-bold animate-pulse'}>
                             {mcpConnected ? 'Online' : 'Reconnecting'}
                           </span>
-                        </div>
-                        <div className="flex justify-between p-3 bg-black/20 rounded-xl border border-white/5">
-                          <span className="text-zinc-500 font-medium">Active Pairings</span>
-                          <span className="text-white font-bold">{instances.length}</span>
                         </div>
                       </div>
                     </div>
