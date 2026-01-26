@@ -95,7 +95,7 @@ function App() {
     return null;
   };
 
-  const updateNetwork = (idOrKey: string) => {
+  const updateNetwork = useCallback((idOrKey: string) => {
     if (!idOrKey) return;
     try {
       // Handle Solana keys directly
@@ -127,7 +127,7 @@ function App() {
     } catch (e) {
       console.error('Failed to update network:', e);
     }
-  };
+  }, []);
 
   // Fetch all wallet data
   const refreshData = useCallback(async () => {
@@ -144,7 +144,10 @@ function App() {
       console.log('Got accounts:', accs);
       
       if (accs && Array.isArray(accs) && accs.length > 0) {
-        setAddress(accs[0]);
+        // Initial connection if not set
+        if (address === '0x0000...0000') {
+          setAddress(accs[0]);
+        }
         setIsConnected(true);
         
         // Get balance
@@ -187,7 +190,6 @@ function App() {
         // Try to get wallet accounts list
         try {
           const accountsList = await provider.request({ method: 'wallet_listAccounts' });
-          console.log('Got full accounts list:', accountsList);
           if (Array.isArray(accountsList)) {
             setAccounts(accountsList.map((a: any) => ({
               name: a.name,
@@ -196,13 +198,19 @@ function App() {
               isActive: a.isActive
             })));
             
-            // If we have accounts, update the active one's name
-            const active = accountsList.find(a => a.isActive || a.address.toLowerCase() === accs[0].toLowerCase());
-            if (active) setAccountName(active.name);
+            // Sync active account details correctly
+            const active = accountsList.find(a => a.isActive);
+            if (active) {
+              setAccountName(active.name);
+              setAddress(active.address);
+            } else if (accs.length > 0) {
+              setAddress(accs[0]);
+            }
           }
         } catch (e) {
           console.error('Accounts list fetch failed:', e);
-          setAccounts([{ name: accountName, address: accs[0], type: 'evm', isActive: true }]);
+          // Fallback - don't use accountName from state to avoid dependency loop
+          setAccounts([{ name: 'Vibe Account', address: accs[0], type: 'evm', isActive: true }]);
         }
 
         // Try to get tokens
@@ -249,7 +257,7 @@ function App() {
     } catch (e) {
       console.error('Refresh failed:', e);
     }
-  }, [accountName]);
+  }, []);
 
   // Connect to Extension
   const connectWallet = async () => {
@@ -315,10 +323,9 @@ function App() {
     const provider = getVibeProvider();
     if (provider) {
       // Listen for changes
-      provider.on('accountsChanged', (accounts: string[]) => {
-        if (accounts.length > 0) {
-          setAddress(accounts[0]);
-          setIsConnected(true);
+      provider.on('accountsChanged', (newAccounts: string[]) => {
+        if (newAccounts.length > 0) {
+          // If the first account changed, or if we weren't connected, refresh everything
           refreshData();
         } else {
           setIsConnected(false);
