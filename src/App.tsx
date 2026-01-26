@@ -53,7 +53,6 @@ function App() {
   const [chainId, setChainId] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
   const [isWrongWallet, setIsWrongWallet] = useState(false);
-  const [showAccountSelector, setShowAccountSelector] = useState(false);
   const [showNetworkSelector, setShowNetworkSelector] = useState(false);
   const [chainType, setChainType] = useState<'evm' | 'solana'>('evm');
   
@@ -251,14 +250,13 @@ function App() {
   const switchAccount = async (name: string) => {
     const provider = getVibeProvider();
     if (!provider) return;
-    
+
     try {
       console.log('Switching account to:', name);
-      await provider.request({ 
-        method: 'wallet_selectAccount', 
+      await provider.request({
+        method: 'wallet_selectAccount',
         params: { accountName: name }
       });
-      setShowAccountSelector(false);
       // Wait a bit for storage to propagate
       setTimeout(() => refreshData(), 500);
     } catch (e) {
@@ -417,67 +415,13 @@ function App() {
         <header className="h-20 flex items-center justify-between px-10 border-b border-white/5 bg-dark/40 backdrop-blur-xl z-10">
           <h2 className="font-bold text-xl">{activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}</h2>
           <div className="flex items-center gap-5">
-            <button 
+            <button
               onClick={refreshData}
               className="p-2 rounded-xl hover:bg-white/5 transition-colors text-zinc-500 hover:text-white"
               title="Refresh"
             >
               <RefreshCw size={18} />
             </button>
-            <div className="relative">
-              <button 
-                onClick={() => setShowAccountSelector(!showAccountSelector)}
-                className="flex items-center gap-3 px-4 py-2 rounded-xl hover:bg-white/5 transition-all group"
-              >
-                <div className="flex flex-col items-end">
-                  <span className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] group-hover:text-primary transition-colors italic">{accountName}</span>
-                  <span className="text-xs font-mono text-zinc-300 font-bold group-hover:text-white transition-colors">{address.slice(0, 6)}...{address.slice(-4)}</span>
-                </div>
-                <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-300 ${showAccountSelector ? 'rotate-180 text-primary' : ''}`} />
-              </button>
-              
-              {showAccountSelector && accounts.length > 0 && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setShowAccountSelector(false)} />
-                  <div className="absolute right-0 top-full mt-3 w-64 bg-[#0A0A0A] border border-white/10 rounded-[24px] shadow-[0_20px_50px_rgba(0,0,0,0.8)] p-2 z-50 animate-fade-in ring-1 ring-white/5 overflow-hidden">
-                    <div className="p-3 border-b border-white/5 mb-1 bg-white/[0.02]">
-                      <span className="text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500">Switch Account</span>
-                    </div>
-                    {accounts.map((acc, i) => (
-                      <button
-                        key={i}
-                        onClick={() => switchAccount(acc.name)}
-                        className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all duration-300 mb-1 ${
-                          acc.isActive 
-                            ? 'bg-primary/10 border border-primary/20 text-primary' 
-                            : 'hover:bg-white/5 text-zinc-400 hover:text-zinc-200 border border-transparent'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black transition-all ${
-                            acc.isActive 
-                              ? (acc.type === 'solana' ? 'bg-secondary text-white shadow-[0_0_15px_rgba(20,184,166,0.4)]' : 'bg-primary text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]')
-                              : 'bg-zinc-800 text-zinc-500'
-                          }`}>
-                            {acc.name[0]}
-                          </div>
-                          <div className="text-left">
-                            <div className="flex items-center gap-1.5">
-                              <p className={`text-xs font-black uppercase italic tracking-tighter ${acc.isActive ? (acc.type === 'solana' ? 'text-secondary' : 'text-primary') : ''}`}>{acc.name}</p>
-                              <span className={`text-[7px] font-black px-1 py-0.2 rounded border ${acc.type === 'solana' ? 'bg-secondary/10 border-secondary/20 text-secondary' : 'bg-primary/10 border-primary/20 text-primary'}`}>
-                                {acc.type?.toUpperCase()}
-                              </span>
-                            </div>
-                            <p className="text-[10px] font-mono opacity-50 tracking-tighter">{acc.address.slice(0, 10)}...{acc.address.slice(-8)}</p>
-                          </div>
-                        </div>
-                        {acc.isActive && <Check size={14} className="animate-in zoom-in duration-300" />}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
             <div className={`w-10 h-10 rounded-2xl p-[1px] ${isConnected ? 'bg-gradient-to-br from-primary to-secondary' : 'bg-white/10'}`}>
               <div className="w-full h-full bg-zinc-900 rounded-[15px] flex items-center justify-center">
                 <Wallet size={18} className={isConnected ? 'text-primary' : 'text-zinc-600'} />
@@ -567,17 +511,17 @@ function App() {
                               key={net.id}
                               onClick={(e) => { e.stopPropagation(); switchNetwork(net.id); }}
                               className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all text-left group/item ${
-                                network.includes(net.name) 
-                                  ? 'bg-primary/10 border border-primary/20' 
+                                network === net.name
+                                  ? 'bg-primary/10 border border-primary/20'
                                   : 'hover:bg-white/5 border border-transparent'
                               }`}
                             >
-                              {network.includes(net.name) ? (
+                              {network === net.name ? (
                                 <div className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(139,92,246,0.5)]" />
                               ) : (
                                 <div className="w-2 h-2 rounded-full border border-zinc-600" />
                               )}
-                              <span className={`text-xs font-black uppercase tracking-widest italic ${network.includes(net.name) ? 'text-primary' : 'text-zinc-400 group-hover/item:text-zinc-200'}`}>
+                              <span className={`text-xs font-black uppercase tracking-widest italic ${network === net.name ? 'text-primary' : 'text-zinc-400 group-hover/item:text-zinc-200'}`}>
                                 {net.name}
                               </span>
                             </button>
