@@ -132,11 +132,17 @@ function App() {
   // Fetch all wallet data
   const refreshData = useCallback(async () => {
     const provider = getVibeProvider();
-    if (!provider) return;
+    if (!provider) {
+      console.log('Provider not found during refresh');
+      return;
+    }
 
     try {
+      console.log('Refreshing dashboard data...');
       // Get accounts
       const accs = await provider.request({ method: 'eth_accounts' });
+      console.log('Got accounts:', accs);
+      
       if (accs && Array.isArray(accs) && accs.length > 0) {
         setAddress(accs[0]);
         setIsConnected(true);
@@ -147,29 +153,24 @@ function App() {
             method: 'eth_getBalance', 
             params: [accs[0], 'latest'] 
           });
+          console.log('Got balance:', bal);
           
           if (typeof bal === 'string') {
             const b = bal.startsWith('0x') ? BigInt(bal) : BigInt(bal);
             setBalance((Number(b) / 1e18).toFixed(4));
+          } else if (typeof bal === 'number') {
+            setBalance((bal / 1e18).toFixed(4));
           } else {
-            // Might be Solana balance (decimal string)
-            const b = parseFloat(bal);
-            if (!isNaN(b)) setBalance(b.toFixed(4));
-            else setBalance("0.0000");
-          }
-        } catch (e) {
-          // Try Solana balance
-          try {
-            const bal = await provider.request({ method: 'solana_getBalance' });
-            setBalance((parseFloat(bal) / 1e9).toFixed(4));
-          } catch {
             setBalance("0.0000");
           }
+        } catch (e) {
+          console.error('Balance fetch failed:', e);
         }
         
         // Get chain
         try {
           const chain = await provider.request({ method: 'eth_chainId' });
+          console.log('Got chain ID:', chain);
           updateNetwork(chain);
         } catch (e) {
           console.error('Chain fetch failed:', e);
@@ -186,6 +187,7 @@ function App() {
         // Try to get wallet accounts list
         try {
           const accountsList = await provider.request({ method: 'wallet_listAccounts' });
+          console.log('Got full accounts list:', accountsList);
           if (Array.isArray(accountsList)) {
             setAccounts(accountsList.map((a: any) => ({
               name: a.name,
@@ -198,7 +200,8 @@ function App() {
             const active = accountsList.find(a => a.isActive || a.address.toLowerCase() === accs[0].toLowerCase());
             if (active) setAccountName(active.name);
           }
-        } catch {
+        } catch (e) {
+          console.error('Accounts list fetch failed:', e);
           setAccounts([{ name: accountName, address: accs[0], type: 'evm', isActive: true }]);
         }
 
