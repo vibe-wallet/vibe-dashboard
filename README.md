@@ -11,6 +11,14 @@ A premium web visualization suite for the Vibe Wallet ecosystem. Monitor your AI
 - **Transaction History**: View recent on-chain activity with status indicators.
 - **Cyberpunk UI**: High-performance dark mode interface with Framer Motion animations.
 
+## 🛠️ Tech Stack
+
+- **Vite 7** + **React 19** + **TypeScript 5.9**
+- **Tailwind CSS 4** — utility-first styling
+- **viem** — EVM blockchain interactions
+- **lucide-react** — icon library
+- **clsx** + **tailwind-merge** — conditional class utilities
+
 ## 🚀 Quick Start
 
 ```bash
@@ -21,10 +29,21 @@ pnpm run dev
 
 The dashboard will be available at [http://localhost:5173](http://localhost:5173).
 
-## 🛠️ Requirements
+## 💻 Development
+
+```bash
+pnpm install      # Install dependencies
+pnpm dev          # Start dev server (http://localhost:5173)
+pnpm build        # Type-check and build for production
+pnpm preview      # Preview production build
+pnpm lint         # Run ESLint
+```
+
+## 🔗 Requirements
 
 - **Vibe Wallet Extension** must be installed and active in the browser.
-- Works best on **Ethereum Sepolia**, **Base Sepolia**, and **Arbitrum Sepolia**.
+- **EVM Networks**: Ethereum Sepolia, Base Sepolia, Arbitrum Sepolia.
+- **Solana Networks**: Devnet, Testnet, Mainnet.
 
 ## 📜 License
 
